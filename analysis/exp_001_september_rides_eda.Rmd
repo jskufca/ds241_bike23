@@ -1,0 +1,277 @@
+---
+title: "Experiment001: DC Bikeshare data"
+subtitle: "EDA on Sep23 ride data"
+author: "Joe Skufca
+date:  "2023-10-22"
+output: html_notebook:
+  toc: yes
+---
+
+This experiment continues are class work on the NYCflights data, with a bit more looking at delays.
+
+We will continue to refer to (https://r4ds.hadley.nz/data-transform).
+
+
+# Packages
+
+Data is from https://s3.amazonaws.com/capitalbikeshare-data/index.html .  
+The other packages will support our analysis. 
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+
+```
+### Other project defaults
+
+For consistency:
+
+```{r}
+theme_set(theme_minimal())
+```
+
+
+
+
+
+# Read the data
+
+```{r}
+df1=read_csv(here("data_raw","202309-capitalbikeshare-tripdata.zip"))
+```
+
+# Rides vs time
+
+
+### Change to long table and computer ridership
+
+To track active riders over time, we'll break each observation into a 
+
+* "ride start", which increases active riders by one
+* "ride end" which decreases active riders by one
+
+
+
+```{r}
+df2s=df1 %>% 
+  select(rideable_type,member_casual,
+                    contains("start"),ride_id) %>% 
+  mutate(start_stop="start") %>%
+  rename(t=started_at,
+         station_name=start_station_name,
+         station_id=start_station_id,
+         lat=start_lat,
+         lng=start_lng)
+df2e=df1 %>% 
+  select(ride_id,rideable_type,member_casual,
+                    contains("end")) %>%
+  mutate(start_stop="stop") %>%
+  rename(t=ended_at,
+         station_name=end_station_name,
+         station_id=end_station_id,
+         lat=end_lat,
+         lng=end_lng)
+
+df2=bind_rows(df2s,df2e) %>%
+  arrange(t) %>%
+  mutate(rider_delta=(start_stop=="start")*2-1) %>% #change in ridership 
+  mutate(riders=cumsum(rider_delta)) %>%
+  relocate(riders,.after=t)
+
+
+```
+
+
+### EDA plots of ridership 
+
+#### Full month
+
+```{r}
+df2 %>% 
+  ggplot(aes(t,riders)) +
+  geom_line()
+```
+
+#### One day:
+
+
+```{r}
+df2 %>% 
+  filter(day(t)==18) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() +
+  ggtitle("Riders on 18Sep")
+```
+
+### Can I see ridership with panels:
+
+I want to understand the relationship to weekly patterns:
+
+
+
+
+```{r}
+df2 %>% filter(month(t)==9) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() + 
+  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+Let's look by weekday
+
+```{r}
+df2 %>% filter(month(t)==9) %>%
+  mutate(epi=epiweek(t),wd=wday(t,label=TRUE,week_start = 1)) %>%
+  ggplot(aes(hms::as_hms(t),riders,color=as.factor(epi))) +
+  geom_line() + 
+  facet_wrap(~wd,scales = "free_x",ncol=7 )
+```
+
+### Is the pattern similar between electric and classic bikes?
+
+We will need to re-compute the cumsum by group (in addition to overall):
+
+
+```{r}
+df3=bind_rows(df2s,df2e) %>%
+  arrange(t) %>%
+  mutate(rider_delta=(start_stop=="start")*2-1) %>% #change in ridership 
+  mutate(riders=cumsum(rider_delta)) %>%
+  mutate(type_riders=cumsum(rider_delta),.by=rideable_type) %>%
+  relocate(riders,type_riders,.after=t)
+```
+
+
+```{r}
+df3 %>% filter(month(t)==9) %>%
+  ggplot(aes(t,type_riders,color=rideable_type)) +
+  geom_line() + 
+  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+Some questions?
+
+https://ride.capitalbikeshare.com/blog/capital-bikeshare-and-dockless-bike-systems-your-top-3-questions-answered
+
+
+
+## What is a typical duration?
+
+```{r}
+df4=df1 %>% 
+  mutate(dur=ended_at-started_at)
+```
+
+```{r}
+df4 %>% ggplot(aes(dur,fill=member_casual)) +
+  geom_histogram(alpha=.5)
+```
+
+
+```{r}
+df4 %>% filter(dur<60*45,dur>0) %>%
+  ggplot(aes(dur,fill=member_casual)) +
+  geom_histogram(alpha=.5)
+```
+
+
+
+```{r}
+df4 %>% filter(dur<60*30,dur>0) %>%
+  ggplot(aes(dur,fill=member_casual)) +
+  geom_density(alpha=.5)
+```
+
+
+
+```{r}
+df4 %>% filter(dur<60*30,dur>0) %>%
+  ggplot(aes(dur,fill=rideable_type)) +
+  geom_density(alpha=.5)
+```
+
+
+#### Does duration vary with "when" people ride?
+
+
+```{r}
+df4 %>% 
+  filter(dur<60*30,dur>0) %>%
+  filter(day(started_at)==18) %>%
+  slice_sample(n=10000) %>%
+  ggplot(aes(started_at,dur)) +
+  geom_point(alpha=.1) 
+
+
+#+ 
+#  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+
+```{r}
+df4 %>% 
+  filter(dur<60*30,dur>0) %>%
+  filter(day(started_at)==18) %>%
+  slice_sample(n=10000) %>%
+  ggplot(aes(started_at,dur)) +
+  geom_density2d_filled()+
+  facet_wrap(~rideable_type)
+
+
+#+ 
+#  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+
+```{r}
+library(ggridges)
+df4 %>% 
+  filter(dur<60*30,dur>0) %>%
+  #filter(day(started_at)==18) %>%
+  #slice_sample(n=20000) %>%
+  ggplot(aes(x=dur,y=as.factor(hour(started_at)))) +
+  geom_density_ridges()
+
+
+#+ 
+#  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+Is the wavy behavior in the morning an anomoly of small sample size?
+
+```{r}
+df4 %>% 
+  filter(dur<60*30,dur>0) %>%
+  #filter(day(started_at)<10) %>%
+  mutate(start_hr=hour(started_at)) %>%
+  tabyl(start_hr)
+```
+
+```{r}
+df4 %>% 
+  filter(dur<60*30,dur>0) %>%
+  #filter(day(started_at)==18) %>%
+  #slice_sample(n=10000) %>%
+  filter(hour(started_at)<5) %>%
+  ggplot(aes(hms::as_hms(started_at),dur)) +
+  geom_point(alpha=.1) 
+
+
+#+ 
+#  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+
+
+```{r}
+df4 %>% 
+  filter(dur<60*30,dur>0) %>%
+  #filter(day(started_at)==18) %>%
+  #slice_sample(n=10000) %>%
+  filter(hour(started_at)<5,hour(started_at)>1) %>%
+  ggplot(aes(hms::as_hms(started_at),dur)) +
+  geom_density_2d_filled(bins=30)
+
+
+#+ 
+#  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
