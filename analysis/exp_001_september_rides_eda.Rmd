@@ -119,11 +119,12 @@ df2 %>% filter(month(t)==9) %>%
 ```
 Let's look by weekday
 
+
 ```{r}
 df2 %>% filter(month(t)==9) %>%
-  mutate(epi=epiweek(t),wd=wday(t,label=TRUE,week_start = 1)) %>%
+  mutate(epi=epiweek(t),wd=wday(t,label=TRUE,week_start = 7)) %>%
   ggplot(aes(hms::as_hms(t),riders,color=as.factor(epi))) +
-  geom_line() + 
+  geom_line(alpha=.7) + 
   facet_wrap(~wd,scales = "free_x",ncol=7 )
 ```
 
