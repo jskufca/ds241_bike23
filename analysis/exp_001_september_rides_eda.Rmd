@@ -119,11 +119,20 @@ df2 %>% filter(month(t)==9) %>%
 ```
 Let's look by weekday
 
+<<<<<<< HEAD
 ```{r}
 df2 %>% filter(month(t)==9) %>%
   mutate(epi=epiweek(t),wd=wday(t,label=TRUE,week_start = 1)) %>%
   ggplot(aes(hms::as_hms(t),riders,color=as.factor(epi))) +
   geom_line() + 
+=======
+
+```{r}
+df2 %>% filter(month(t)==9) %>%
+  mutate(epi=epiweek(t),wd=wday(t,label=TRUE,week_start = 7)) %>%
+  ggplot(aes(hms::as_hms(t),riders,color=as.factor(epi))) +
+  geom_line(alpha=.7) + 
+>>>>>>> fa4f219d3c88502f011f8b3c6aabd03240c63523
   facet_wrap(~wd,scales = "free_x",ncol=7 )
 ```
 
@@ -213,6 +222,7 @@ df4 %>%
   filter(day(started_at)==18) %>%
   slice_sample(n=10000) %>%
   ggplot(aes(started_at,dur)) +
+<<<<<<< HEAD
   geom_density2d_filled()+
   facet_wrap(~rideable_type)
 
@@ -270,6 +280,9 @@ df4 %>%
   filter(hour(started_at)<5,hour(started_at)>1) %>%
   ggplot(aes(hms::as_hms(started_at),dur)) +
   geom_density_2d_filled(bins=30)
+=======
+  geom_density2d_filled()
+>>>>>>> fa4f219d3c88502f011f8b3c6aabd03240c63523
 
 
 #+ 
