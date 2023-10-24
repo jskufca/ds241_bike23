@@ -1,0 +1,156 @@
+---
+title: "Experiment002: DC Bikeshare data"
+subtitle: "Demo on ride counts on 2023-09 data"
+author: "Joe Skufca
+date:  "2023-10-24"
+output: html_notebook:
+  toc: yes
+---
+
+This experiment continues are class work on bikeshare data.
+
+We will continue to refer to (https://r4ds.hadley.nz/data-transform).
+
+Data is from https://s3.amazonaws.com/capitalbikeshare-data/index.html 
+
+
+# Packages
+
+.  
+The other packages will support our analysis. 
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+
+```
+### Other project defaults
+
+For consistency:
+
+```{r}
+theme_set(theme_minimal())
+```
+
+
+# Read the data
+
+```{r}
+df1=read_csv(here("data_raw","202309-capitalbikeshare-tripdata.zip"))
+```
+
+# Rides vs time
+
+I provide here a simplified version of how I tackle counting the number of active riders.
+
+### Change to long table and computer ridership
+
+To track active riders over time, we'll break each observation into a 
+
+* "ride start", which increases active riders by one
+* "ride end" which decreases active riders by one
+
+
+To develop our method, we will start with a small slice of the data, allowing that once the methodology is created and debugged, we can do the whole dataset:
+
+```{r}
+
+df2=df1 |> 
+#  slice_head(n=100) |>
+  pivot_longer(
+    cols=c(started_at,ended_at),
+    names_to="start_end",
+    values_to = "t")|>
+  arrange(t) |>
+  mutate(rider_delta=(start_end =="started_at")*2-1) |> # results in +/- 1
+  mutate(riders=cumsum(rider_delta))   |>
+  relocate(t,start_end,riders, .after =rideable_type )
+  
+
+```
+
+
+### EDA plots of ridership 
+
+#### Full month
+
+```{r}
+df2 %>% 
+#  slice_sample(prop=.01) |>
+  ggplot(aes(t,riders)) +
+  geom_line() +
+  ggtitle("Riders in September")
+```
+
+#### One day:
+
+
+```{r}
+df2 %>% 
+  filter(day(t)==18) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() +
+  ggtitle("Riders on 18Sep")
+```
+
+### Can I see ridership with panels:
+
+I want to understand the relationship to weekly patterns:
+
+
+
+
+```{r}
+df2 %>% filter(month(t)==9) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() + 
+  facet_wrap(~mday(t),scales = "free_x",ncol=7 )+
+  ggtitle("riders by day of month")
+
+```
+Let's look by weekday
+
+
+```{r}
+df2 %>% filter(month(t)==9) %>%
+  mutate(epi=epiweek(t),wd=wday(t,label=TRUE,week_start = 7)) %>%
+  ggplot(aes(hms::as_hms(t),riders,color=as.factor(epi))) +
+  geom_line(alpha=.7) + 
+  facet_wrap(~wd,scales = "free_x",ncol=7 )
+```
+
+### Is the pattern similar between electric and classic bikes?
+
+We will need to re-compute the cumsum by group (in addition to overall):
+
+
+```{r}
+df3=df2 %>%
+  mutate(type_riders=cumsum(rider_delta),.by=rideable_type) %>%
+  mutate(member_riders=cumsum(rider_delta),.by=member_casual) %>%
+  relocate(type_riders,.after=riders)
+```
+
+
+```{r}
+df3 %>% filter(month(t)==9) %>%
+  ggplot(aes(t,type_riders,color=rideable_type)) +
+  geom_line() + 
+  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+
+```{r}
+df3 %>% filter(month(t)==9) %>%
+  ggplot(aes(t,member_riders,color=member_casual)) +
+  geom_line() + 
+  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+
+Some questions?
+
+https://ride.capitalbikeshare.com/blog/capital-bikeshare-and-dockless-bike-systems-your-top-3-questions-answered
+
+
