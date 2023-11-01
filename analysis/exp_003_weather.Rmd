@@ -38,7 +38,7 @@ I installed rwynderground via github:
 
 ```{r}
 #install.packages("openmeteo")
-devtools::install_github("ALShum/rwunderground")
+#devtools::install_github("ALShum/rwunderground")
 ```
 
 We load those packages:
@@ -152,4 +152,17 @@ df2 |>
   geom_line()
 ```
 
+# Experimenting with rwunderground
+
+```{r}
+set_location(airport_code="DCA")
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+# hourly(set_location(airport_code="DCA"), key = get_api_key(), raw = FALSE,
+# message = TRUE)
+```
 
