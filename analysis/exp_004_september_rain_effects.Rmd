@@ -210,10 +210,21 @@ We start with a small sliced sample and verify that it does what we want:
 
 ```{r}
 df_s=df2 %>% slice_sample(n=1000)
+
 ```
 
-
 ```{r}
+df_e %>% 
+  #filter(day(t)==18) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() +
+  ggtitle("Riders on 18Sep")
+
+```
+ The procedure seems reasonable so we apply to full dataset and visualize.
+ 
+```{r}
+
 
 df_j=df_s %>% left_join(df_w,
                         by=join_by(closest(t>=datetime)))
@@ -240,7 +251,7 @@ df_j$datetime[1:5]
       
 
 ```
-
+ 
 
 
 Our problem is that our bikeshare dataset "thinks" the times our in UTC, but based on a plot or ridership for the 18th (for example) we know that is not the case.   
@@ -249,6 +260,7 @@ Our problem is that our bikeshare dataset "thinks" the times our in UTC, but bas
 We expect ridership to pick up at about 7AM local, but this plot tI illustrate:
 
 ```{r}
+
 df2 %>% 
   filter(day(t)==18) %>%
   ggplot(aes(t,riders)) +
@@ -263,6 +275,8 @@ df_w %>%
   filter(day(datetime)==18) %>%
   ggplot(aes(datetime,hourly_apparent_temperature)) +
   geom_line()
+
+
 ```
 
 
@@ -274,15 +288,19 @@ We need to change the underlying INSTANT in time in the timeshare dataset.   Add
 
 We will use `force_tz`:
 
+
+
 ```{r}
+
 df2$t[1:5]
 force_tz(df2$t[1:5],"America/New_York")
+
 ```
 
 
 
-
 ```{r}
+
 df2c=df2 %>% mutate(t=force_tz(t,tzone="America/New_York")) #corrected
 
 df_s2=df2c %>% slice_sample(n=1000)
@@ -292,10 +310,8 @@ df_j2=df_s2 %>%
   relocate(datetime, .after=t)
 
 head(df_j2)
+
 ```
-
-
-Normally, joined columns are added to the right.  Let's move the `datetime` column (for the weather forecast, next to `t`) and examine where we stand.
 
 
 ### Merging across entire dataset
@@ -331,9 +347,8 @@ p2=df_r %>%
 p2
 ```
 
+
 ```{r}
 plotly::ggplotly(p2)
 ```
-
-
 
