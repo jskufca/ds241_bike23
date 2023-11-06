@@ -1,0 +1,227 @@
+---
+title: "Experiment004: DC Bikeshare data"
+subtitle: "Effect of rain on ridership"
+author: "Joe Skufca
+date:  "2023-11-03"
+output: html_notebook:
+  toc: yes
+---
+
+This experiment seeks to understand how rain impacts the characteristics of riders.  Potential areas of investigation:
+
+Does rain affect:
+
+* How many people ride
+* How long they ride
+* How far they ride
+* Where they ride
+
+Data is from https://s3.amazonaws.com/capitalbikeshare-data/index.html and
+weather data coming from https://open-meteo.com/  via the ropenmeteo packaage.
+
+We will focus on September 2023 data.
+
+# Packages
+
+ 
+Baseline packages for our analysis. 
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+library(openmeteo)
+```
+### Other project defaults
+
+For consistency of our ggplots:
+
+```{r}
+theme_set(theme_minimal())
+```
+
+
+# Read the data
+
+```{r}
+df1=read_csv(here("data_raw","202309-capitalbikeshare-tripdata.zip"))
+```
+
+# Rides vs time
+
+
+### Change to long table and compute ridership
+
+To track active riders over time, we'll break each observation into a 
+
+* "ride start", which increases active riders by one
+* "ride end" which decreases active riders by one
+
+
+
+```{r}
+df2s=df1 %>% 
+  select(rideable_type,member_casual,
+                    contains("start"),ride_id) %>% 
+  mutate(start_stop="start") %>%
+  rename(t=started_at,
+         station_name=start_station_name,
+         station_id=start_station_id,
+         lat=start_lat,
+         lng=start_lng)
+df2e=df1 %>% 
+  select(ride_id,rideable_type,member_casual,
+                    contains("end")) %>%
+  mutate(start_stop="stop") %>%
+  rename(t=ended_at,
+         station_name=end_station_name,
+         station_id=end_station_id,
+         lat=end_lat,
+         lng=end_lng)
+
+df2=bind_rows(df2s,df2e) %>%
+  arrange(t) %>%
+  mutate(rider_delta=(start_stop=="start")*2-1) %>% #change in ridership 
+  mutate(riders=cumsum(rider_delta)) %>%
+  relocate(riders,.after=t)
+
+
+```
+
+
+### EDA plots of ridership 
+
+#### Full month
+
+```{r}
+df2 %>% 
+  ggplot(aes(t,riders)) +
+  geom_line()
+```
+
+#### One day:
+
+
+```{r}
+p1=df2 %>% 
+  filter(day(t)==18) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() +
+  ggtitle("Riders on 18Sep")
+p1
+```
+
+### Can I see ridership with panels:
+
+I want to understand the relationship to weekly patterns:
+
+
+```{r}
+df2 %>% filter(month(t)==9) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() + 
+  facet_wrap(~mday(t),scales = "free_x",ncol=7 )
+```
+
+# Constructing a subsampled dataset
+
+Currently, when visualizing we are looking at all 900000 events, many spaced very closely together. 
+
+We probably don't need that high of a resolution. Let's see if we can "intelligently" downsample.
+
+
+We work with a small slice of data as we build the approach, as it is computationally efficient.
+```{r}
+df_s=df2 %>% slice_head(n=1000)
+```
+
+
+We can round-down (floor) to the nearest 10 minute point, and then sample the first (earliest) point within that 10 minute window.
+```{r}
+df_e=df_s |>
+  mutate(t_f=floor_date(t,"10 mins")) %>%
+  relocate(t_f,.after=t) %>%
+  slice_sample(n=1,by=t_f)
+```
+
+```{r}
+df_e %>% 
+  #filter(day(t)==18) %>%
+  ggplot(aes(t,riders)) +
+  geom_line() +
+  ggtitle("Riders on 18Sep")
+```
+ The procedure seems reasonable so we apply to full dataset and visualize.
+ 
+```{r}
+df_r=df2 |>
+  mutate(t_f=floor_date(t,"10 mins")) %>%
+  relocate(t_f,.after=t) %>%
+  slice_sample(n=1,by=t_f)
+```
+ 
+ We plot for the 18th, and compare to our original visualization.
+ 
+```{r}
+p1+
+  geom_line(data=df_r %>% filter(day(t)==18),
+  color="red") 
+
+  
+```
+
+Based on figure above, it seems like subsampling based on nearest minute may be more appropriate:
+
+```{r}
+df_r=df2 |>
+  mutate(t_f=floor_date(t,"1 mins")) %>%
+  relocate(t_f,.after=t) %>%
+  slice_sample(n=1,by=t_f)
+```
+
+```{r}
+p1+
+  geom_line(data=df_r %>% filter(day(t)==18),
+  color="red") 
+
+  
+```
+
+
+
+# Get weather data for September
+
+```{r}
+df_w=weather_history("Washington",
+                    start = "2023-09-01",
+                    end = "2023-09-30",
+                    hourly = c("apparent_temperature",
+                               "wind_speed_10m",
+                               "precipitation")
+)
+
+```
+
+# Merging bike and weather dataset
+
+When joining by a "continuous" variable (such as time), the "join_by" should be carefully organized.  Here, we would want join each bike ride (in our originial dataset) with the "nearest" weather observation.
+
+We start with a small sliced sample and verify that it does what we want:
+
+```{r}
+df_s=df2 %>% slice_sample(n=1000)
+```
+
+```{r}
+
+df_j=df_s %>% left_join(df_w,
+                        by=join_by(closest(t>=datetime)))
+```
+
+
+
+
+
+
+
+

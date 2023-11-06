@@ -1,0 +1,168 @@
+---
+title: 'Experiment003: Pulling weather data from the web'
+author: "Joe Skufca"
+date: "2023-11-01"
+output:
+  html_document:
+    df_print: paged
+  toc: yes
+  html_notebook: null
+---
+
+This experiment looks to understand a few of the available packages that allow for pulling of data 
+
+
+# Packages
+
+Our standard set of packages for data analyis:
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+
+```
+
+We will experiment with:
+
+* `rwunderground` https://github.com/ALShum/rwunderground
+* `open-meteo` 
+
+https://cran.r-project.org/web/packages/openmeteo/index.html
+https://github.com/open-meteo/open-meteo
+ 
+
+I installed openmeteo via CRAN.
+
+I installed rwynderground via github:
+
+```{r}
+#install.packages("openmeteo")
+#devtools::install_github("ALShum/rwunderground")
+```
+
+We load those packages:
+
+```{r}
+library(rwunderground)
+library(openmeteo)
+```
+
+We choose a theme for our ggplots.
+```{r}
+theme_set(theme_minimal())
+```
+
+# Experimenting with openmeteo
+
+As a "goal", we will work toward pulling (and graphing) hourly temperatures and rainfall for Washington DC for the period 20-22 September 2023.
+
+## Testing that package works
+
+
+I will execute a few of the commands shown in the manual.
+
+
+```{r}
+weather_now("Montreal")
+
+```
+
+```{r}
+weather_now("Washington")
+
+```
+
+```{r}
+weather_forecast("nyc",
+hourly = c("temperature_2m", "precipitation"),
+response_units = list(
+temperature_unit = "fahrenheit",
+precipitation_unit = "inch"
+)
+)
+```
+
+```{r}
+weather_forecast("Washington",
+hourly = c("temperature_2m", "precipitation"),
+response_units = list(
+temperature_unit = "fahrenheit",
+precipitation_unit = "inch"
+)
+)
+```
+
+
+## Historical data
+
+From the manual:
+```{r}
+weather_history("London",
+                    start = "2020-01-01",
+                    end = "2021-12-31",
+                    hourly = "cloudcover"
+)
+
+```
+
+### Our desired DC data
+
+Let's check availabable variables:
+
+```{r}
+weather_variables()
+```
+
+
+
+```{r}
+df2=weather_history("Washington",
+                    start = "2023-09-01",
+                    end = "2023-09-30",
+                    hourly = c("apparent_temperature",
+                               "wind_speed_10m",
+                               "precipitation",
+                               "rain")
+)
+
+```
+
+Let's make a plot:
+
+```{r}
+df2 |>
+  filter(day(datetime)==1) |>
+  ggplot(aes(datetime,hourly_apparent_temperature))+
+  geom_point()
+```
+
+Verify timezone of our datatime:
+
+```{r}
+tz(df2$datetime)
+```
+
+Let's plot rainfall across the month:
+
+```{r}
+df2 |>
+  #filter(day(datetime)==1) |>
+  ggplot(aes(datetime,hourly_rain))+
+  geom_line()
+```
+
+# Experimenting with rwunderground
+
+```{r}
+set_location(airport_code="DCA")
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+# hourly(set_location(airport_code="DCA"), key = get_api_key(), raw = FALSE,
+# message = TRUE)
+```
+
