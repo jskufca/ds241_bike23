@@ -213,15 +213,7 @@ df_s=df2 %>% slice_sample(n=1000)
 
 ```
 
-```{r}
-df_e %>% 
-  #filter(day(t)==18) %>%
-  ggplot(aes(t,riders)) +
-  geom_line() +
-  ggtitle("Riders on 18Sep")
 
-```
- The procedure seems reasonable so we apply to full dataset and visualize.
  
 ```{r}
 
@@ -241,7 +233,7 @@ df_j=df_s %>%
 head(df_j)
 ```
 
-NOTE - ourtimes don't match up.  
+NOTE - our times don't match up.  
 
 ### Investigating time mismatch between datasets
 
