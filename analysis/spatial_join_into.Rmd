@@ -1,0 +1,248 @@
+---
+title: "Replacement Class - Introduction to spatial data"
+date:  "2023-11-12"
+author: "Coach Skufca"
+output: html_notebook
+---
+
+This notebook supports an asynchronous lecture meant to introduce you to some basics of spatial data.  The lecture will be provided via Echo360.
+
+I will provide you with a partially completed notebook to assist your work.
+
+This notebooks will focus on "spatial data" and also accessing demographic data in R.
+
+Key topics for today:
+
+* Using `here` package
+* Using the `/data_raw/` directory
+* Reminder on joins (focus: left join)
+* Our Spatial Data
+   * Neighborhoods
+   * Joining with non-spatial data
+   * Census data
+   * Joining with spatial data
+* ignore html in git
+
+## Packages
+
+Standards:
+
+```{r}
+library(knitr)
+library(tidyverse)
+library(janitor)
+library(lubridate) # because we will probably see some dates
+library(here) # more easily access files in your project
+```
+
+Some additional packages focuses on today's work:
+
+```{r}
+library(sf) # working with simple features - geospatial
+library(tmap)
+library(tidycensus)
+
+```
+
+A link to a book on `tmap`: https://r-tmap.github.io/
+
+
+
+## Using the Neighborhood Geospatial Data (using /data)
+
+One way the DC is subdivided is by "neighborhood".
+
+https://opendata.dc.gov/datasets/DCGIS::dc-health-planning-neighborhoods/about
+
+
+I will use the GeoJSON file.  (Newer, not necessarily better, but ... a single file.  Not smaller, but ... this one is not big.)  
+
+
+
+Data is easily readable 
+```{r}
+neigh=st_read(here("data_raw",
+                   "DC_Health_Planning_Neighborhoods.geojson")) %>% clean_names()
+
+class(neigh)
+```
+
+```{r}
+plot(neigh)
+```
+
+
+
+## Reminder - Joins
+
+```{r}
+df1=tibble(fruit=c("apple","banana","cherry"),cost=c(1.5,1.2,2.25))
+df2=tibble(fruit=c("apple","apple","cherry","lemon"),
+           desert=c("pie","cobbler","cobbler","cheesecake"),
+           cal=c(400,430,500,550))
+df1
+```
+```{r}
+df2
+```
+```{r}
+left_join(df1,df2,by="fruit")
+```
+
+## Investigating joining spatial and non-spatial data
+
+Read cases information:
+
+```{r message=FALSE, warning=FALSE}
+df_c=read_csv(here("data_raw",
+                   "DC_COVID-19_Total_Positive_Cases_by_Neighborhood.csv")) %>% 
+  clean_names() 
+```
+
+
+```{r}
+df_cases=df_c %>%
+  filter(as_date(date_reported) == "2021-11-17") %>% 
+  separate(neighborhood,into=c("code","name"),sep = ":")
+
+```
+
+
+```{r}
+df_cases=df_c %>%
+  filter(as_date(date_reported) == "2021-11-17") %>% 
+  separate(neighborhood,into=c("code","name"),sep = ":") %>%
+  mutate(code=case_when(code=="N35" ~"N0",
+                        TRUE ~ code)) %>%
+  select(-date_reported)
+  
+  
+```
+
+
+## Regular joining (of dataframes)
+
+```{r}
+neigh2=left_join(neigh,df_cases,by=c("code")) 
+
+tmap_mode("view")
+
+tm_shape(neigh2) +tm_polygons("total_positives",alpha=.5)
+```
+
+
+## Joining with other spatial data
+
+Let's get some data using `tidycensus`.  Need an API key   https://api.census.gov/data/key_signup.html
+
+
+```{r eval=FALSE, include=FALSE}
+census_api_key("YOUR KEY HERE")
+
+```
+ 
+ 
+ What data is available --- and what is the variable name?
+ 
+```{r}
+#what variables
+v20 = load_variables(2018,"acs5")
+# median_family_income="	B06011_001" 
+# all "B00001_001"	
+#black "B02009_001"
+```
+
+
+Get some data:
+
+```{r}
+df_cencus=get_acs(geography = "tract",
+                  variables=c("median_inc"="B06011_001",
+                              "pop"="B01001_001",
+                              "pop_black"="B02009_001"),
+                  state="DC",geometry=TRUE,year=2021) 
+```
+
+```{r}
+class(df_cencus)
+plot(df_cencus)
+```
+It's in long format.  Let's make it wide.
+```{r}
+df_cens=df_cencus %>% 
+  select(-moe) %>% 
+  pivot_wider(names_from = "variable", 
+              values_from = "estimate")
+  
+ 
+
+tm_shape(df_cens) +tm_polygons("median_inc",alpha=.5)
+```
+
+### How to join
+
+Consider this problem:
+
+```{r}
+
+  tm_shape(neigh2) +tm_borders(col="blue",lwd=5,alpha=.2)+
+  tm_shape(df_cens) +tm_borders(col="red",lwd=1,alpha=.3)
+```
+
+
+
+```{r}
+
+df_j=st_join(df_cens,neigh2)
+
+```
+
+```{r}
+df_cens_adj=df_cens %>% st_transform(4326)
+```
+
+
+```{r}
+df_j=st_join(df_cens_adj,neigh2,largest=TRUE)
+```
+Other order?:
+
+```{r}
+
+df_j_rev = st_join(neigh2,df_cens_adj,largest=TRUE)
+
+```
+
+Since we want the geometry for the NEIGHBORHOODS, we need a different work a little harder:
+
+```{r}
+df1=df_j %>% select(median_inc,pop,pop_black,code) %>%
+  group_by(code) %>%
+  summarise(pop_n=sum(pop),
+            pop_black_n=sum(pop_black), 
+            adj_median_income=sum(pop*median_inc)/pop_n) 
+
+plot(df1)
+```
+
+Now that we are aggregating in the right way, we can join.
+
+```{r}
+#df2=left_join(neigh2,df1)
+
+df2=left_join(neigh2,df1 %>% st_set_geometry(NULL))
+
+```
+
+```{r}
+df2=df2 %>% mutate(black_perc=pop_black_n/pop_n, covid_rate=total_positives/pop_n)
+tm_shape(df2)+tm_polygons(c("adj_median_income","covid_rate","black_perc"))
+```
+
+
+
+```{r}
+df2 %>% filter(code!="N0") %>% tm_shape()+tm_polygons(c("adj_median_income","covid_rate","black_perc"),alpha=.4)
+```
+
+
