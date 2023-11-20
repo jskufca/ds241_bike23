@@ -1,0 +1,202 @@
+---
+title: "Exp_007 Visualizing Crimes and stations"
+date:  "2023-11-17"
+author: "Coach Skufca"
+output: html_notebook
+---
+
+This notebook intends to provide map representation of information DC Bikeshare ridership.  In particular, I am interested in ... where are stations, how they align with neighborhoods and populations, and how crime statistics interact.
+
+
+## Packages
+
+Standards:
+
+```{r}
+library(knitr)
+library(tidyverse)
+library(janitor)
+library(lubridate) # because we will probably see some dates
+library(here) # more easily access files in your project
+```
+
+Some additional packages focuses on today's work:
+
+```{r}
+library(sf) # working with simple features - geospatial
+library(tmap)
+library(tidycensus)
+library(gbfs)
+```
+
+A link to a book on `tmap`: https://r-tmap.github.io/
+
+
+
+## Using the Neighborhood Geospatial Data (using /data)
+
+One way the DC is subdivided is by "neighborhood".
+
+https://opendata.dc.gov/datasets/DCGIS::dc-health-planning-neighborhoods/about
+
+
+I will use the GeoJSON file.  (Newer, not necessarily better, but ... a single file.  Not smaller, but ... this one is not big.)  
+
+
+
+Data is easily readable 
+```{r}
+neigh=st_read(here("data_raw",
+                   "DC_Health_Planning_Neighborhoods.geojson")) %>% clean_names()
+
+class(neigh)
+```
+# Goal Visualization
+
+Lets build chloropleth maps representing density of crime across the 51 neighborhoods.
+
+* Experiment with small data to get the code running, then creep up to full size.
+
+
+## Get crime data
+
+Read ride information:
+
+```{r message=FALSE, warning=FALSE}
+crime=st_read(here("data_raw",
+                   "Crime_Incidents_in_2022.geojson")) %>% clean_names()
+
+class(crime)
+```
+
+Use a subsample to keep problem small
+
+```{r}
+crime_s=crime %>% slice_sample(n=1000)
+
+```
+
+```{r}
+plot(crime_s)
+```
+
+```{r}
+tmap_mode("view")
+
+tm_shape(crime_s)+
+  tm_dots("offense")
+```
+
+```{r}
+tmap_mode("view")
+
+tm_shape(crime)+
+  tm_facets("offense")+
+  tm_dots("offense", legend.show = FALSE)
+```
+
+
+
+### Focus on violent crimes
+
+I think we should pay special attention to violent crimes.
+
+I will filter specifically for ROBBERY, SEX ABUSE, HOMICIDE, ASSAULT.  I 
+realize that these are still spread throughout the city.  
+
+```{r}
+crime_v=crime |>
+  filter(offense %in% c("ROBBERY", "SEX ABUSE", "HOMICIDE", "ASSAULT W/DANGEROUS WEAPON")) |>
+  mutate(offense=as_factor(offense))
+```
+
+```{r}
+tm_shape(crime_v)+
+  tm_facets("offense")+
+  tm_dots("offense", legend.show = FALSE)
+```
+
+### Varying with night?
+
+I am curious as to whether the density pattern seems to vary between day and night.
+
+As a "rough" visualization, let's simply separate out the time period 9PM-6AM based on 
+start_date.
+
+```{r}
+crime_v2=crime_v %>% 
+  mutate(tod=hour(start_date), night=(tod<6 | tod>20)) |>
+  relocate(night,.before=start_date)
+```
+
+```{r}
+
+tm_shape(crime_v2)+
+  tm_facets("night")+
+  tm_dots("offense", legend.show = FALSE)
+```
+
+Point clouds do not seem too revealing.
+
+
+# to fix
+
+
+```{r}
+neigh2=neigh %>%
+  mutate(crimes=lengths(st_intersects(.,crime_v)))
+
+
+```
+
+
+
+
+
+
+```{r}
+neigh2 %>% 
+  tm_shape()+tm_polygons(c("crimes"),alpha=.4)
+```
+
+
+
+### Normalize by population?
+
+Let's grag census data as we did before, and join with neighborhood data,
+as before, but also creating a "crime_rate" variable.
+
+
+
+```{r}
+df_cens=get_acs(geography = "tract",
+                  variables=c("median_inc"="B06011_001",
+                              "pop"="B01001_001",
+                              "pop_black"="B02009_001"),
+                  state="DC",geometry=TRUE,year=2021)  %>% 
+  select(-moe) %>% 
+  pivot_wider(names_from = "variable", 
+              values_from = "estimate") %>%
+  st_transform(4326)
+
+df_j=st_join(df_cens,neigh2)
+
+df1=df_j %>% select(median_inc,pop,pop_black,code) %>%
+  group_by(code) %>%
+  summarise(pop_n=sum(pop),
+            pop_black_n=sum(pop_black), 
+            adj_median_income=sum(pop*median_inc)/pop_n)
+
+df2=left_join(neigh2,df1 %>% st_set_geometry(NULL)) |>
+  mutate(crime_rate=crimes/pop_n,
+         black_perc=pop_black_n/pop_n)
+```
+
+
+```{r}
+tm_shape(df2)+tm_polygons(c("adj_median_income","crime_rate","black_perc"),alpha=.3)
+```
+
+
+
+
