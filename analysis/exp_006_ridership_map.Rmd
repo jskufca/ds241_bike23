@@ -1,0 +1,130 @@
+---
+title: "Ridership - A spatial view by neighborhood"
+date:  "2023-11-15"
+author: "Coach Skufca"
+output: html_notebook
+---
+
+This notebook intends to provide map representation of information DC Bikeshare ridership.
+
+I will provide you with a partially completed notebook to assist your work.
+
+
+
+## Packages
+
+Standards:
+
+```{r}
+library(knitr)
+library(tidyverse)
+library(janitor)
+library(lubridate) # because we will probably see some dates
+library(here) # more easily access files in your project
+```
+
+Some additional packages focuses on today's work:
+
+```{r}
+library(sf) # working with simple features - geospatial
+library(tmap)
+library(tidycensus)
+
+```
+
+A link to a book on `tmap`: https://r-tmap.github.io/
+
+
+
+## Using the Neighborhood Geospatial Data (using /data)
+
+One way the DC is subdivided is by "neighborhood".
+
+https://opendata.dc.gov/datasets/DCGIS::dc-health-planning-neighborhoods/about
+
+
+I will use the GeoJSON file.  (Newer, not necessarily better, but ... a single file.  Not smaller, but ... this one is not big.)  
+
+
+
+Data is easily readable 
+```{r}
+neigh=st_read(here("data_raw",
+                   "DC_Health_Planning_Neighborhoods.geojson")) %>% clean_names()
+
+class(neigh)
+```
+# Goal Visualization
+
+Lets build chloropleth maps representing density of bike riders across the 51 neighborhoods.
+
+* Experiment with small data to get the code running, then creep up to full size.
+
+
+## Get bikeshare data
+
+Read ride information:
+
+```{r message=FALSE, warning=FALSE}
+df1=read_csv(here("data_raw","202309-capitalbikeshare-tripdata.zip"))
+```
+
+Use a subsample to keep problem small
+
+```{r}
+df1_s=df1 %>% slice_sample(n=1000)
+
+```
+
+
+
+## Joining (of dataframes)
+
+Make the bikeshare data into an sf object using start coordinates.
+
+```{r}
+df1_s_sf=df1_s %>% 
+  st_as_sf(coords = c("start_lng", "start_lat"), crs = 4326)
+
+plot(df1_s_sf)
+```
+
+
+```{r}
+neigh2=neigh %>%
+  mutate(rides=lengths(st_intersects(.,df1_s_sf)))
+
+
+```
+
+
+
+
+
+
+```{r}
+neigh2 %>% 
+  tm_shape()+tm_polygons(c("rides"),alpha=.4)
+```
+
+```{r}
+sum(neigh2$rides)
+```
+
+## Larger dataset
+
+```{r}
+df1_s=df1 %>% slice_sample(n=100000)
+df1_s_sf=df1_s %>% 
+  st_as_sf(coords = c("start_lng", "start_lat"), crs = 4326)
+```
+
+```{r}
+neigh2=neigh %>%
+  mutate(rides=lengths(st_intersects(.,df1_s_sf)))
+```
+
+```{r}
+neigh2 %>% 
+  tm_shape()+tm_polygons(c("rides"),alpha=.4)
+```

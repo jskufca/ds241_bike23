@@ -139,14 +139,14 @@ df_s=df2 %>% slice_head(n=1000)
 We can round-down (floor) to the nearest 10 minute point, and then sample the first (earliest) point within that 10 minute window.
 ```{r}
 df_e=df_s |>
-  mutate(t_f=floor_date(t,"10 mins")) %>%
+  mutate(t_f=floor_date(t,"10 mins"))%>%
   relocate(t_f,.after=t) %>%
   slice_head(n=1,by=t_f)
 ```
 
 ```{r}
 df_e %>% 
-  #filter(day(t)==18) %>%
+  filter(day(t)==18) %>%
   ggplot(aes(t,riders)) +
   geom_line() +
   ggtitle("Riders on 18Sep")
@@ -328,12 +328,13 @@ dfc=df2c %>%
 Again - we downsample to improve visualization speed.
 ```{r}
 df_r=dfc |>
-  mutate(t_f=floor_date(t,"10 mins")) %>%
-  relocate(t_f,.after=t) %>%
-  slice_head(n=1,by=t_f)
+   mutate(t_f=floor_date(t,"10 mins")) %>%
+   relocate(t_f,.after=t) %>%
+   slice_head(n=1,by=t_f)
 
-p2=df_r %>%
-  ggplot(aes(t,riders,color=prec>1)) +
+p2=dfc %>%
+  filter(day(t)==23) %>%
+  ggplot(aes(t,riders,color=wind)) +
   geom_point()
 
 p2

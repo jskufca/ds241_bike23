@@ -221,7 +221,7 @@ df5 %>% tabyl(station_id) %>% arrange(-n)
 ```{r}
 df5 %>% 
   filter(station_id %in% c(31005,31258,31221,31623)) %>%
-  filter(day(t) %in% c(18,19,20,21,22,23,24)) %>%
+  filter(day(t) %in% c(21,22 )) %>%
   mutate(station_id=as_factor(station_id)) %>%
   ggplot(aes(t,station_riders,color=station_id))+
   geom_line()

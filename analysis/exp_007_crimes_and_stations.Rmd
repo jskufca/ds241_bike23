@@ -90,9 +90,10 @@ tm_shape(crime_s)+
 ```{r}
 tmap_mode("view")
 
-tm_shape(crime)+
-  tm_facets("offense")+
-  tm_dots("offense", legend.show = FALSE)
+tm_shape(crime_s)+
+  tm_facets("shift",free.coords = FALSE)+
+  tm_dots("method")
+  #tm_dots("offense", legend.show = FALSE)
 ```
 
 
@@ -179,7 +180,7 @@ df_cens=get_acs(geography = "tract",
               values_from = "estimate") %>%
   st_transform(4326)
 
-df_j=st_join(df_cens,neigh2)
+df_j=st_join(df_cens,neigh2,largest=TRUE)
 
 df1=df_j %>% select(median_inc,pop,pop_black,code) %>%
   group_by(code) %>%
@@ -194,9 +195,61 @@ df2=left_join(neigh2,df1 %>% st_set_geometry(NULL)) |>
 
 
 ```{r}
-tm_shape(df2)+tm_polygons(c("adj_median_income","crime_rate","black_perc"),alpha=.3)
+tm_shape(df2%>% filter(code!="N0"))+tm_polygons(c("adj_median_income","crime_rate","black_perc"),alpha=.3)
+```
+
+## Bike feed data
+
+Let's load some data showing station locations:
+
+
+```{r}
+dfbc=get_gbfs_cities()
+```
+
+We are interested in `cabi` for system id.
+
+```{r}
+dfbs=get_station_information("cabi")
+```
+
+```{r}
+dfbs_sf=dfbs %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+```
+
+```{r}
+tm_shape(dfbs_sf)+
+    tm_dots("capacity")
+```
+
+#### Realtime data
+
+Let's pull station data:
+
+```{r}
+station_status=get_station_status("https://gbfs.capitalbikeshare.com/gbfs/2.3/gbfs.json")
 ```
 
 
+```{r}
+bike_status=get_free_bike_status("https://gbfs.capitalbikeshare.com/gbfs/2.3/gbfs.json") |>
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+```
+
+```{r}
+tm_shape(bike_status)+
+    tm_dots("vehicle_type_id")
+```
+
+#### Let's look at station real-time info
+
+```{r}
+sf_stations=left_join(dfbs_sf,station_status,by="station_id")
+```
 
 
+```{r}
+tm_shape(sf_stations)+
+    tm_dots("num_bikes_available",popup.vars=c("name"))
+```
