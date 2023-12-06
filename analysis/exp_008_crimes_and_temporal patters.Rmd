@@ -1,11 +1,23 @@
 ---
-title: "Exp_007 Visualizing Crimes and stations"
-date:  "2023-11-17"
+title: "Exp_008 Visualizing Crimes, rates, and spatial and temporal patterns"
+date:  "2023-12-04"
 author: "Coach Skufca"
 output: html_notebook
 ---
 
-This notebook intends to provide map representation of information DC Bikeshare ridership.  In particular, I am interested in ... where are stations, how they align with neighborhoods and populations, and how crime statistics interact.
+This experiment will try to explore crime data for both spatial and temporal patterns.
+
+I particular, I am interested in the following logic train:
+
+* Is their a daily temporal pattern for crime?
+* If so, is that pattern consistent throughout the city?
+* Is there a temporal pattern for bike ridership?
+* Is the temporal pattern of bike ridership different in high crime neighborhoods?
+    * Can we "see" an effect
+    
+The anticipated causal chain we are exploring is --- high risk crime areas would suppress bike riding,
+especially during times of increase street crime.
+
 
 
 ## Packages
@@ -27,6 +39,8 @@ library(sf) # working with simple features - geospatial
 library(tmap)
 library(tidycensus)
 library(gbfs)
+theme_set(theme_minimal())
+
 ```
 
 A link to a book on `tmap`: https://r-tmap.github.io/
@@ -195,11 +209,143 @@ df2=left_join(neigh2,df1 %>% st_set_geometry(NULL)) |>
 tm_shape(df2%>% filter(code!="N0"))+tm_polygons(c("adj_median_income","crime_rate","black_perc"),alpha=.3)
 ```
 
+### Normalizing by area
+
+I hypothesized that what I really am interested in is whether crime affects behavior, 
+in which case, we really need to understand "perceived crime risk".   I did a token
+bit of research on this idea, but my sense is that ... a major effect would be the
+"density" of crimes (how many crimes per unit area) when determining whether an area was safe.
+
+So --- I want to recompute "crime rate" as two different variables, one normalizing by population, and the other by area.
+
+Of course, we will need a tool to compute areas of each of our neighborhoods.
+
+
+```{r}
+df2=left_join(neigh2,df1 %>% st_set_geometry(NULL)) |>
+  mutate(crime_rate_pop=crimes/pop_n,
+         black_perc=pop_black_n/pop_n,
+         shapearea=st_area(neigh2) %>% units::set_units(km^2),
+         crime_rate_area=crimes/shapearea) 
+  
+```
+```{r}
+tm_shape(df2%>% filter(code!="N0"))+
+  tm_polygons(c("crime_rate_pop","crime_rate_area","black_perc"),
+                  alpha=.3,
+          id="name")
+```
+### A temporal look at the crime data
+
+Let's plot timeline of violent crimes:
+```{r}
+crime_v2 |>
+  ggplot(aes(start_date,offense)) + geom_point() 
+```
+It's interesting that some crimes are old.   Let's re-visualize using the time that the crime was reported.
+
+```{r}
+crime_v2 |>
+  ggplot(aes(report_dat,offense)) + geom_point()
+```
+Not very informative.   We are interested in the _temporal density_ of crimes, so let's use a different geometry.
+
+```{r}
+
+crime_v2 |>
+  ggplot(aes(report_dat,color=offense)) + geom_density()
+```
+```{r}
+
+crime_v2 |>
+  ggplot(aes(report_dat,y=offense,fill=offense)) + 
+  ggridges::geom_density_ridges(bandwidth = 3600*24*7)  + 
+  theme(legend.position = "none")
+```
+Seems like there is time-of-year variability.
+
+Maybe a different plot would be useful:
+
+```{r}
+library(ggbeeswarm)
+
+crime_v2 |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(report_dat,y=offense,fill=offense)) + 
+  geom_quasirandom(bandwidth = .05,alpha=.2)  + 
+  theme(legend.position = "none") +
+  scale_x_datetime(date_breaks="1 month", date_labels="%b")
 
 
 
+```
 
-## Bike feed data
+If I zoom to a shorter time period, can I see a finer temporal pattern?
+
+```{r}
+crime_v2 |> 
+  filter(report_dat >="2022-02-01" & report_dat <"2022-02-07" ) |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(report_dat,y=offense,fill=offense)) + 
+  geom_quasirandom(bandwidth = .1,alpha=.2)  + 
+  theme(legend.position = "none") +
+  scale_x_datetime(date_breaks="1 day", date_labels="%d")
+```
+
+The data is pretty sparse --- like only about 10 violent crimes per day (on average).
+
+So --- lets aggregate over many days and look at finder resolution:
+
+```{r}
+p5=crime_v2 |> 
+  #filter(report_dat >="2022-02-01" & report_dat <"2022-02-07" ) |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(hms::as_hms(start_date)  ,y=offense,fill=offense)) + 
+  geom_quasirandom(bandwidth = .00001,alpha=.2)  + 
+  #geom_point(bandwidth = .05,alpha=.2)+
+  #geom_jitter(width=0,alpha=.2)+
+  theme(legend.position = "none") 
+#p5 = plotly::ggplotly(p5)
+p5
+#+
+#  scale_x_datetime(date_breaks="1 day", date_labels="%d")
+```
+
+Curious question - is the seasonal variation related to ACTUAL temperatures?
+
+
+```{r}
+library(openmeteo)
+df_w=weather_history("Washington",
+                    start = "2022-01-01",
+                    end = "2022-12-31",
+                    hourly = c("apparent_temperature",
+                               "wind_speed_10m",
+                               "precipitation")
+)
+```
+
+```{r}
+
+crime_v2 |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(report_dat,y=offense,fill=offense)) + 
+  geom_quasirandom(bandwidth = .05,alpha=.2)  + 
+  theme(legend.position = "none") +
+  scale_x_datetime(date_breaks="1 month", date_labels="%b")
+
+```
+
+```{r}
+df_w %>% 
+  #filter(day(datetime)==18) %>%
+  ggplot(aes(datetime,hourly_apparent_temperature)) +
+  geom_line()
+
+
+```
+
+# Bike feed data
 
 Let's load some data showing station locations:
 
