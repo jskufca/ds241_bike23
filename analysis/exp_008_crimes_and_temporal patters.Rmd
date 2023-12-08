@@ -311,7 +311,24 @@ p5
 #  scale_x_datetime(date_breaks="1 day", date_labels="%d")
 ```
 
-Curious question - is the seasonal variation related to ACTUAL temperatures?
+An alternative visualization to try to understand temporal density patters:
+
+```{r}
+crime_v2 |> 
+  filter(year(start_date)==2022) |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(start_date,hms::as_hms(start_date) )) + 
+  geom_quasirandom(bandwidth = .00001,alpha=.2)  + 
+  #geom_point(alpha=.2,size=2)+
+  theme_minimal() +
+  #geom_jitter(alpha=.2)+
+  scale_x_datetime(date_breaks="1 month", date_labels="%b")
+
+```
+
+
+
+Curious question - is the seasonal variation related to ACTUAL temperatures? Daylight?
 
 
 ```{r}
@@ -323,7 +340,52 @@ df_w=weather_history("Washington",
                                "wind_speed_10m",
                                "precipitation")
 )
+
+df_wd=weather_history("Washington",
+                    start = "2022-01-01",
+                    end = "2022-12-31",
+                    daily = c("apparent_temperature_max",
+                               "sunset",
+                               "precipitation_sum")) 
+
+df_wd2=df_wd %>%
+    separate(daily_sunset,c(NA,"sunset"),"T") %>%
+  mutate(sunset=parse_time(sunset))
+
 ```
+Let's look at temporal density while including sunset time.
+
+```{r}
+crime_v2 |> 
+  filter(year(start_date)==2022) |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(start_date,hms::as_hms(start_date) )) + 
+  geom_quasirandom(bandwidth = .00001,alpha=.2)  + 
+  #geom_point(alpha=.2,size=2)+
+  theme_minimal() +
+  #geom_jitter(alpha=.2)+
+  scale_x_datetime(date_breaks="1 month", date_labels="%b")+
+  geom_line(data=df_wd2,aes(as_datetime(date),sunset),color="red")
+
+```
+
+```{r}
+crime_v2 |> 
+  filter(year(start_date)==2022) |>
+  mutate(offense=fct_recode(offense,assault.weap="ASSAULT W/DANGEROUS WEAPON")) %>%
+  ggplot(aes(start_date,hms::as_hms(start_date) )) + 
+  geom_density_2d_filled()+
+  #geom_quasirandom(bandwidth = .00001,alpha=.2)  + 
+  #geom_point(alpha=.2,size=2)+
+  theme_minimal() +
+  #geom_jitter(alpha=.2)+
+  scale_x_datetime(date_breaks="1 month", date_labels="%b")+
+  geom_line(data=df_wd2,aes(as_datetime(date),sunset),color="red")
+
+```
+
+
+
 
 ```{r}
 
@@ -344,6 +406,12 @@ df_w %>%
 
 
 ```
+
+
+
+
+
+
 
 # Bike feed data
 
